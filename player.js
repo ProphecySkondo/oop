@@ -3,88 +3,68 @@
 
   const poster = document.getElementById("video-poster");
   const overlay = document.getElementById("video-overlay");
-  const playBtn = document.getElementById("play-button");
 
-  // Show the video thumbnail before play (since autoplay is removed)
-  poster.style.backgroundImage = `url("https://i.ytimg.com/vi/${VIDEO_ID}/hqdefault.jpg")`;
+  // Thumbnail before the iframe fully loads
+  poster.style.backgroundImage = `url("https://i.ytimg.com/vi/${VIDEO_ID}/maxresdefault.jpg")`;
 
   let player;
 
-  // Called automatically by YouTube IFrame API
   window.onYouTubeIframeAPIReady = function () {
     player = new YT.Player("video-background", {
-      width: "640",
-      height: "360",
       videoId: VIDEO_ID,
       playerVars: {
+        autoplay: 1,
+        mute: 1,
         controls: 0,
         modestbranding: 1,
         rel: 0,
         playsinline: 1,
         disablekb: 1,
-
-        // We are NOT using autoplay.
-        // We are NOT relying on loop=1.
-        // JS will loop it manually when it ends.
+        fs: 0,
+        showinfo: 0
       },
       events: {
-        onStateChange: onPlayerStateChange,
-        onError: onPlayerError,
-      },
+        onReady: (e) => {
+          // Force mute + play (most reliable autoplay method)
+          e.target.mute();
+          e.target.playVideo();
+
+          // Hide overlay + poster once it starts
+          overlay.style.display = "none";
+          poster.style.display = "none";
+        },
+
+        onStateChange: (e) => {
+          // Manual loop (reliable)
+          if (e.data === YT.PlayerState.ENDED) {
+            e.target.seekTo(0);
+            e.target.playVideo();
+          }
+        }
+      }
     });
   };
 
-  function onPlayerStateChange(e) {
-    // When video ends, restart it (manual loop)
-    if (e.data === YT.PlayerState.ENDED) {
-      try {
-        player.seekTo(0);
-        player.playVideo();
-      } catch (err) {
-        // ignore
-      }
-    }
-  }
-
-  function onPlayerError(err) {
-    console.warn("YouTube Player Error:", err);
-    showOverlay("▶ Play background video");
-  }
-
-  function hideOverlay() {
-    overlay.style.display = "none";
-    poster.style.display = "none";
-  }
-
-  function showOverlay(text) {
+  // If autoplay fails for any reason, show click-to-play fallback
+  function showClickFallback() {
     overlay.style.display = "flex";
-    poster.style.display = "";
-    playBtn.disabled = false;
-    playBtn.textContent = text || "▶ Play background video";
-  }
+    overlay.innerHTML = `
+      <button id="play-button" class="play-btn">▶ Click to Play</button>
+    `;
 
-  function startPlayback() {
-    if (!player || typeof player.playVideo !== "function") {
-      playBtn.disabled = true;
-      playBtn.textContent = "Starting...";
-      const check = setInterval(() => {
-        if (player && typeof player.playVideo === "function") {
-          clearInterval(check);
-          startPlayback();
-        }
-      }, 150);
-      return;
-    }
-
-    hideOverlay();
-
-    try {
+    document.getElementById("play-button").onclick = () => {
+      player.mute();
       player.playVideo();
-    } catch (err) {
-      console.warn("Play failed:", err);
-      showOverlay("▶ Click to try again");
-    }
+      overlay.style.display = "none";
+      poster.style.display = "none";
+    };
   }
 
-  playBtn.addEventListener("click", startPlayback);
+  // Safety fallback after 2 seconds
+  setTimeout(() => {
+    if (!player) return;
+    const state = player.getPlayerState?.();
+    // If not playing, show fallback
+    if (state !== 1) showClickFallback();
+  }, 2000);
 })();
